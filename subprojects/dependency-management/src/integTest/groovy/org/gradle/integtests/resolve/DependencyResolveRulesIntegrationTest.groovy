@@ -324,32 +324,32 @@ class DependencyResolveRulesIntegrationTest extends AbstractIntegrationSpec {
 
     void "can replace external dependency with project dependency"()
     {
-        mavenRepo.module("org.utils", "api", '1.5').publish()
-
         settingsFile << 'include "api", "impl"'
 
         buildFile << """
             allprojects {
-                $common
-
+                apply plugin: "java"
                 group "org.utils"
-            }
-
-            project(":api") {
                 version = "1.6"
             }
 
             project(":impl") {
                 dependencies {
-                    conf group: "org.utils", name: "api", version: "1.5", configuration: "conf"
+                    compile group: "org.utils", name: "api", version: "1.5"
                 }
 
-                configurations.conf.resolutionStrategy.eachDependency {
-                    it.useTarget project(":api")
+                configurations.compile.resolutionStrategy.eachDependency {
+                    if (it.requested.name == 'api') {
+                        it.useTarget project(":api")
+                    }
                 }
 
-                task check << {
-                    def deps = configurations.conf.incoming.resolutionResult.allDependencies as List
+                task checkIt {
+                    inputs.files configurations.compile
+                }
+
+                checkIt << {
+                    def deps = configurations.compile.incoming.resolutionResult.allDependencies as List
                     assert deps.size() == 1
                     assert deps[0] instanceof org.gradle.api.artifacts.result.ResolvedDependencyResult
 
@@ -362,12 +362,16 @@ class DependencyResolveRulesIntegrationTest extends AbstractIntegrationSpec {
                     assert deps[0].selected.componentId.projectPath == ":api"
                     assert !deps[0].selected.selectionReason.forced
                     assert deps[0].selected.selectionReason.selectedByRule
+
+                    def files = configurations.compile.files
+                    assert files*.name.sort() == ["api-1.6.jar"]
+                    assert files*.exists() == [ true ]
                 }
             }
 """
 
         when:
-        run("impl:check")
+        run("impl:checkIt")
 
         then:
         noExceptionThrown()
