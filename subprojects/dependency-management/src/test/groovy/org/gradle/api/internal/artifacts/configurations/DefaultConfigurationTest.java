@@ -29,7 +29,6 @@ import org.gradle.api.internal.artifacts.dsl.dependencies.ProjectFinder;
 import org.gradle.api.internal.artifacts.ivyservice.resolutionstrategy.DefaultResolutionStrategy;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.projectresult.ResolvedProjectConfigurationResults;
 import org.gradle.api.internal.artifacts.publish.DefaultPublishArtifact;
-import org.gradle.api.internal.project.ProjectInternal;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.specs.Specs;
 import org.gradle.api.tasks.TaskDependency;
@@ -339,9 +338,16 @@ public class DefaultConfigurationTest {
     private void prepareResolve(final ResolvedConfiguration resolvedConfiguration, final boolean withErrors) {
         context.checking(new Expectations() {{
             ResolverResults result = new ResolverResults();
-            result.resolved(resolvedConfiguration, context.mock(ResolutionResult.class), context.mock(ResolvedProjectConfigurationResults.class));
+
+            ResolvedProjectConfigurationResults projectConfigurationResults = context.mock(ResolvedProjectConfigurationResults.class);
+            result.resolved(resolvedConfiguration, context.mock(ResolutionResult.class), projectConfigurationResults);
+
+            allowing(projectConfigurationResults).getAllProjectConfigurationResults();
+            will(returnValue(Collections.emptySet()));
+
             allowing(dependencyResolver).resolve(configuration);
             will(returnValue(result));
+
             allowing(resolvedConfiguration).hasError();
             will(returnValue(withErrors));
         }});
@@ -360,24 +366,12 @@ public class DefaultConfigurationTest {
 
     private DefaultConfiguration createNamedConfiguration(String confName) {
         return new DefaultConfiguration(confName, confName, configurationContainer,
-                dependencyResolver, listenerManager, metaDataProvider, new DefaultResolutionStrategy(),
-                new ProjectFinder() {
-                    @Override
-                    public ProjectInternal getProject(String path) {
-                        return null;
-                    }
-                });
+                dependencyResolver, listenerManager, metaDataProvider, new DefaultResolutionStrategy(), context.mock(ProjectFinder.class));
     }
     
     private DefaultConfiguration createNamedConfiguration(String path, String confName) {
         return new DefaultConfiguration(path, confName, configurationContainer,
-                dependencyResolver, listenerManager, metaDataProvider, new DefaultResolutionStrategy(),
-                new ProjectFinder() {
-                    @Override
-                    public ProjectInternal getProject(String path) {
-                        return null;
-                    }
-                });
+                dependencyResolver, listenerManager, metaDataProvider, new DefaultResolutionStrategy(), context.mock(ProjectFinder.class));
     }
 
     @SuppressWarnings("unchecked")
@@ -385,7 +379,7 @@ public class DefaultConfigurationTest {
     public void buildArtifacts() {
         final Task otherConfTaskMock = context.mock(Task.class, "otherConfTask");
         final Task artifactTaskMock = context.mock(Task.class, "artifactTask");
-        final Configuration otherConfiguration = context.mock(Configuration.class);
+        final Configuration otherConfiguration = context.mock(ConfigurationInternal.class);
         final TaskDependency otherArtifactTaskDependencyMock = context.mock(TaskDependency.class, "otherConfTaskDep");
         final PublishArtifact otherArtifact = context.mock(PublishArtifact.class, "otherArtifact");
         final PublishArtifactSet inheritedArtifacts = new DefaultPublishArtifactSet("artifacts", toDomainObjectSet(PublishArtifact.class, otherArtifact));
@@ -417,7 +411,7 @@ public class DefaultConfigurationTest {
     public void getAllArtifactFiles() {
         final Task otherConfTaskMock = context.mock(Task.class, "otherConfTask");
         final Task artifactTaskMock = context.mock(Task.class, "artifactTask");
-        final Configuration otherConfiguration = context.mock(Configuration.class);
+        final Configuration otherConfiguration = context.mock(ConfigurationInternal.class);
         final TaskDependency otherConfTaskDependencyMock = context.mock(TaskDependency.class, "otherConfTaskDep");
         final TaskDependency artifactTaskDependencyMock = context.mock(TaskDependency.class, "artifactTaskDep");
         final File artifactFile1 = new File("artifact1");
@@ -487,6 +481,8 @@ public class DefaultConfigurationTest {
 
         configuration.getDependencies().add(fileCollectionDependencyStub);
 
+        resolveSuccessfullyAsResolvedConfiguration();
+
         assertThat(configuration.getBuildDependencies().getDependencies(target), equalTo((Set) toSet(fileDepTaskDummy)));
     }
 
@@ -495,7 +491,7 @@ public class DefaultConfigurationTest {
         final Task target = context.mock(Task.class, "target");
         final Task otherConfTaskMock = context.mock(Task.class, "otherConfTask");
         final TaskDependency dependencyTaskDependencyStub = context.mock(TaskDependency.class, "otherConfTaskDep");
-        final Configuration otherConfiguration = context.mock(Configuration.class, "otherConf");
+        final ConfigurationInternal otherConfiguration = context.mock(ConfigurationInternal.class, "otherConf");
         final FileCollectionDependency fileCollectionDependencyStub = context.mock(FileCollectionDependency.class);
         final DependencySet inherited = new DefaultDependencySet("dependencies", toDomainObjectSet(Dependency.class, fileCollectionDependencyStub));
 
@@ -508,6 +504,8 @@ public class DefaultConfigurationTest {
             allowing(otherConfiguration).getAllDependencies();
             will(returnValue(inherited));
 
+            allowing(otherConfiguration).includedInResolveResult();
+
             allowing(fileCollectionDependencyStub).getBuildDependencies();
             will(returnValue(dependencyTaskDependencyStub));
 
@@ -516,6 +514,8 @@ public class DefaultConfigurationTest {
         }});
 
         configuration.extendsFrom(otherConfiguration);
+
+        resolveSuccessfullyAsResolvedConfiguration();
 
         assertThat(configuration.getBuildDependencies().getDependencies(target), equalTo((Set) toSet(otherConfTaskMock)));
     }
