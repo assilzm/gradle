@@ -586,8 +586,12 @@ class DependencyResolveRulesIntegrationTest extends AbstractIntegrationSpec {
                     it.useTarget project(":api")
                 }
 
-                task check << {
-                    def deps = configurations.conf.incoming.resolutionResult.allDependencies as List
+                task checkIt {
+                    inputs.files configurations.compile
+                }
+
+                checkIt << {
+                    def deps = configurations.compile.incoming.resolutionResult.allDependencies as List
                     assert deps.size() == 1
                     assert deps[0] instanceof org.gradle.api.artifacts.result.ResolvedDependencyResult
 
@@ -596,6 +600,10 @@ class DependencyResolveRulesIntegrationTest extends AbstractIntegrationSpec {
 
                     assert !deps[0].selected.selectionReason.forced
                     assert deps[0].selected.selectionReason.selectedByRule
+
+                    def files = configurations.compile.files
+                    assert files*.name.sort() == ["api-1.6.jar"]
+                    assert files*.exists() == [ true ]
                 }
             }
 """
